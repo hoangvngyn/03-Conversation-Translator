@@ -1,0 +1,1628 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Translate</title>
+    <style>
+        :root {
+            --bg: #f5f2ea; --panel: #fffdf9; --panel-2: #fffaf2;
+            --ink: #17120d; --muted: #756a5f; --muted-2: #9d9183;
+            --line: #e7ddd0; --accent: #ff6b2c; --accent-dark: #dd561b; --accent-soft: #fff1e8;
+            --ok: #1f7a45; --ok-bg: #eef9f1; --warn: #a15b00; --warn-bg: #fff6df;
+            --error: #b12b2b; --error-bg: #fff1f1;
+            --v1: #ff6b2c; --v1-bg: #fff1e8; --v1-bd: #ffd6c3;
+            --v2: #2563eb; --v2-bg: #eff6ff; --v2-bd: #bfdbfe;
+            --shadow: 0 10px 30px rgba(36,27,18,.06); --radius: 16px;
+            --sidebar-w: 360px;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            background: radial-gradient(circle at top left, rgba(255,107,44,.08), transparent 28%),
+                        linear-gradient(180deg, #faf7f1 0%, var(--bg) 100%);
+            color: var(--ink); min-height: 100vh; font-size: 14px;
+        }
+        header {
+            padding: 18px 24px 14px; border-bottom: 1px solid rgba(84,64,47,.08);
+            background: rgba(255,252,247,.88); backdrop-filter: blur(12px);
+            position: sticky; top: 0; z-index: 10;
+            display: flex; justify-content: space-between; align-items: center; gap: 16px;
+        }
+        .brand { display: inline-flex; align-items: center; gap: 10px; }
+        .brand-mark {
+            width: 32px; height: 32px; border-radius: 10px; background: var(--accent);
+            color: white; display: inline-flex; align-items: center; justify-content: center;
+            font-weight: 700; font-size: .9rem; box-shadow: 0 8px 20px rgba(255,107,44,.22);
+        }
+        .brand-copy h1 { font-size: 1.02rem; font-weight: 700; letter-spacing: -.01em; }
+        .brand-copy p { font-size: .8rem; color: var(--muted); margin-top: 2px; }
+        .badge {
+            font-size: .72rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+            color: var(--accent-dark); background: var(--accent-soft); border: 1px solid #ffd6c3;
+            border-radius: 999px; padding: 7px 10px; white-space: nowrap;
+        }
+
+        .layout {
+            position: relative;
+            display: grid;
+            grid-template-columns: var(--sidebar-w) minmax(0,1fr) minmax(0,1fr);
+            grid-template-rows: auto minmax(0,1fr);
+            grid-template-areas:
+                "options overview overview"
+                "options conversation translation";
+            gap: 14px; padding: 14px; height: calc(100vh - 74px);
+        }
+        .panel {
+            background: rgba(255,253,249,.96); border: 1px solid var(--line);
+            border-radius: var(--radius); box-shadow: var(--shadow);
+            display: flex; flex-direction: column; overflow: hidden;
+        }
+
+        /* labels */
+        .lbl {
+            display: block; font-size: .7rem; font-weight: 700;
+            text-transform: uppercase; letter-spacing: .08em; color: var(--muted-2); margin-bottom: 5px;
+        }
+        .sec { padding: 18px; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 12px; }
+        .sec:last-child { border-bottom: none; }
+        #optionsPanel { overflow-y: auto; }
+
+        /* inputs */
+        input[type=text], input[type=password], select {
+            width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px;
+            font-size: .85rem; font-family: inherit; color: var(--ink); background: #fffdfb;
+            transition: border-color .15s, box-shadow .15s;
+        }
+        input:focus, select:focus {
+            outline: none; border-color: rgba(255,107,44,.65); background: white;
+            box-shadow: 0 0 0 4px rgba(255,107,44,.10);
+        }
+
+        /* buttons */
+        .btn {
+            padding: 9px 14px; border: none; border-radius: 10px; font-size: .87rem;
+            font-weight: 700; cursor: pointer; font-family: inherit; transition: transform .1s, opacity .15s;
+            width: 100%;
+        }
+        .btn-primary { background: linear-gradient(180deg,#ff7b45,var(--accent)); color: white; box-shadow: 0 8px 20px rgba(255,107,44,.22); }
+        .btn-primary:hover:not(:disabled) { transform: translateY(-1px); }
+        .btn-stop { background: linear-gradient(180deg,#e05050,#c93535); color: white; box-shadow: 0 8px 20px rgba(201,53,53,.18); }
+        .btn-ghost { background: white; border: 1px solid var(--line); color: var(--ink); }
+        .btn-ghost:hover:not(:disabled) { border-color: rgba(255,107,44,.4); color: var(--accent-dark); }
+        .btn:disabled { opacity: .5; cursor: not-allowed; transform: none !important; }
+        .btn-row { display: flex; gap: 8px; }
+        .btn-row .btn { flex: 1; }
+        .btn-sm {
+            padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px;
+            font-size: .73rem; cursor: pointer; background: white; color: var(--ink);
+            font-family: inherit; transition: all .15s;
+        }
+        .btn-sm:hover:not(:disabled) { border-color: rgba(255,107,44,.4); color: var(--accent-dark); }
+        .btn-sm:disabled { opacity: .5; cursor: not-allowed; }
+
+        /* source status chips */
+        .source-row { display: flex; align-items: center; gap: 10px; }
+        .src-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted-2); flex-shrink: 0; transition: background .3s; }
+        .src-dot.live { background: #22c55e; animation: pulse 1.4s ease-in-out infinite; }
+        .src-dot.error { background: var(--error); }
+        .src-label { font-size: .78rem; font-weight: 600; min-width: 52px; }
+        .src-detail { font-size: .73rem; color: var(--muted); flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .src-btn { flex-shrink: 0; }
+        @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.55;transform:scale(.82)} }
+
+        /* toggle */
+        .tog-row {
+            display: flex; align-items: center; gap: 7px; font-size: .78rem; color: var(--muted);
+            cursor: pointer; position: relative;
+        }
+        .tog { position: relative; width: 30px; height: 17px; flex-shrink: 0; display: inline-block; }
+        .tog input {
+            position: absolute; inset: 0; margin: 0; opacity: 0; width: 100%; height: 100%;
+            cursor: pointer;
+        }
+        .t-tr { position: absolute; inset: 0; background: var(--line); border-radius: 999px; cursor: pointer; transition: background .2s; }
+        .t-th { position: absolute; width: 13px; height: 13px; background: white; border-radius: 50%; top: 2px; left: 2px; transition: transform .2s; pointer-events: none; box-shadow: 0 1px 3px rgba(0,0,0,.2); }
+        .tog input:checked ~ .t-tr { background: var(--accent); }
+        .tog input:checked ~ .t-th { transform: translateX(13px); }
+        .tog input:focus-visible ~ .t-tr { box-shadow: 0 0 0 4px rgba(255,107,44,.12); }
+
+        /* stats */
+        .stat-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 6px; }
+        .stat-card { border: 1px solid var(--line); border-radius: 10px; padding: 7px 9px; background: white; }
+        .stat-card .k { display: block; font-size: .63rem; color: var(--muted-2); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 2px; }
+        .stat-card .v { font-size: .84rem; font-weight: 700; color: var(--ink); }
+        .stat-card .sub { font-size: .68rem; color: var(--muted); margin-top: 2px; }
+
+        /* overview */
+        #optionsPanel { grid-area: options; }
+        #overviewPanel { grid-area: overview; padding: 18px; gap: 16px; }
+        #convPanel { grid-area: conversation; }
+        #transPanel { grid-area: translation; }
+        .overview-hero {
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            text-align: center; gap: 8px; padding: 18px;
+            border: 1px solid var(--line); border-radius: 18px;
+            background: linear-gradient(180deg, rgba(255,255,255,.95), rgba(255,245,238,.92));
+        }
+        .overview-kicker {
+            font-size: .68rem; font-weight: 700; letter-spacing: .14em; text-transform: uppercase;
+            color: var(--accent-dark);
+        }
+        .overview-title {
+            font-size: 1.35rem; font-weight: 800; letter-spacing: -.03em; color: var(--ink);
+        }
+        .overview-copy {
+            max-width: 880px; font-size: .83rem; line-height: 1.4; color: var(--muted); white-space: nowrap;
+        }
+        .overview-stats {
+            display: grid; grid-template-columns: repeat(6, minmax(0,1fr)); gap: 8px;
+        }
+        .sidebar-resize {
+            position: absolute; top: 14px; bottom: 14px;
+            left: calc(14px + var(--sidebar-w) + 7px);
+            width: 14px; transform: translateX(-50%);
+            display: flex; align-items: center; justify-content: center;
+            cursor: col-resize; z-index: 20;
+            touch-action: none;
+        }
+        .sidebar-resize::before {
+            content: ""; width: 4px; height: 72px; border-radius: 999px;
+            background: linear-gradient(180deg, rgba(255,107,44,.12), rgba(37,99,235,.18));
+            border: 1px solid rgba(132,106,80,.08);
+            box-shadow: 0 6px 18px rgba(36,27,18,.08);
+            transition: background .15s, transform .15s;
+        }
+        .sidebar-resize:hover::before,
+        .sidebar-resize.is-dragging::before {
+            background: linear-gradient(180deg, rgba(255,107,44,.28), rgba(37,99,235,.28));
+            transform: scaleX(1.15);
+        }
+
+        /* alert */
+        .alert { font-size: .73rem; padding: 8px 10px; border-radius: 10px; border: 1px solid transparent; display: none; line-height: 1.4; }
+        .alert.err { background: var(--error-bg); color: var(--error); border-color: #f0c9c9; display: block; }
+        .alert.ok  { background: var(--ok-bg); color: var(--ok); border-color: #cae9d4; display: block; }
+        .info-note { font-size: .71rem; color: var(--muted); line-height: 1.45; padding: 8px 10px; background: var(--warn-bg); border: 1px solid #f2d28f; border-radius: 10px; }
+        .subtle-note {
+            font-size: .75rem; color: var(--muted); line-height: 1.5;
+            padding: 2px 2px 0;
+        }
+
+        /* panel header */
+        .ph { padding: 11px 14px; border-bottom: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-shrink: 0; }
+        .ph-title { font-size: .7rem; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--muted-2); }
+        .ph-right { display: flex; align-items: center; gap: 7px; font-size: .75rem; color: var(--muted); }
+        .sdot { width: 8px; height: 8px; border-radius: 50%; }
+        .s-idle { background: var(--muted-2); }
+        .s-rec  { background: #ef4444; animation: pulse 1.2s ease-in-out infinite; }
+        .timer  { font-weight: 700; font-variant-numeric: tabular-nums; }
+
+        /* transcript */
+        .t-area {
+            flex: 1; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 7px;
+        }
+        .entry {
+            display: flex; flex-direction: column; gap: 3px;
+            padding: 8px 10px; border-radius: 10px; background: white;
+            border: 1px solid var(--line); border-left: 3px solid var(--line);
+            animation: fadeIn .2s ease;
+        }
+        @keyframes fadeIn { from{opacity:0;transform:translateY(3px)} to{opacity:1;transform:none} }
+        .entry[data-v="1"] { border-left-color: var(--v1); }
+        .entry[data-v="2"] { border-left-color: var(--v2); }
+        .emeta { display: flex; align-items: center; gap: 6px; font-size: .67rem; }
+        .espk  { font-weight: 700; }
+        .entry[data-v="1"] .espk { color: var(--v1); }
+        .entry[data-v="2"] .espk { color: var(--v2); }
+        .etime { color: var(--muted-2); }
+        .elang { color: var(--muted-2); font-style: italic; }
+        .etext { font-size: .87rem; line-height: 1.55; color: var(--ink); }
+        .etext.pending { color: var(--muted); font-style: italic; }
+
+        /* interim */
+        .interim-wrap { flex-shrink: 0; padding: 0 10px 10px; }
+        .interim {
+            padding: 8px 12px; border-radius: 10px; border: 1.5px dashed var(--line);
+            background: #faf7f2; font-size: .84rem; color: var(--muted); font-style: italic; line-height: 1.5; min-height: 36px; transition: all .15s;
+        }
+        .interim.live[data-v="1"] { border-color: var(--v1); background: var(--v1-bg); color: var(--v1); font-style: normal; }
+        .interim.live[data-v="2"] { border-color: var(--v2); background: var(--v2-bg); color: var(--v2); font-style: normal; }
+
+        /* empty */
+        .empty-state { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 32px; text-align: center; color: var(--muted-2); gap: 8px; }
+        .empty-icon { font-size: 2rem; opacity: .35; }
+        .empty-text { font-size: .8rem; line-height: 1.5; }
+
+        /* voice lang selects in panel header */
+        .voice-langs { display: flex; gap: 6px; padding: 10px 14px; border-bottom: 1px solid var(--line); flex-shrink: 0; }
+        .vlang { flex: 1; }
+        .vlang select { font-size: .77rem; padding: 5px 8px; }
+        .vlang-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; flex-shrink: 0; }
+
+        .hidden { display: none !important; }
+        .sr-only {
+            position: absolute !important;
+            width: 1px !important;
+            height: 1px !important;
+            padding: 0 !important;
+            margin: -1px !important;
+            overflow: hidden !important;
+            clip: rect(0, 0, 0, 0) !important;
+            white-space: nowrap !important;
+            border: 0 !important;
+        }
+
+        @media (max-width: 1100px) {
+            .layout {
+                grid-template-columns: 320px minmax(0,1fr);
+                grid-template-rows: auto minmax(280px, 1fr) minmax(280px, 1fr);
+                grid-template-areas:
+                    "options overview"
+                    "options conversation"
+                    "options translation";
+            }
+            .sidebar-resize { display: none; }
+            .overview-stats { grid-template-columns: repeat(3, minmax(0,1fr)); }
+            #transPanel { display: flex; }
+        }
+        @media (max-width: 700px) {
+            .layout {
+                grid-template-columns: 1fr; grid-template-rows: auto;
+                grid-template-areas:
+                    "options"
+                    "overview"
+                    "conversation"
+                    "translation";
+                height: auto;
+            }
+            .sidebar-resize { display: none; }
+            .overview-stats { grid-template-columns: repeat(2, minmax(0,1fr)); }
+            .overview-copy { white-space: normal; }
+            #transPanel { display: flex; }
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <div class="brand">
+        <div class="brand-mark">LT</div>
+        <div class="brand-copy">
+            <h1>Live Translate</h1>
+            <p>passive transcription &amp; translation for calls</p>
+        </div>
+    </div>
+    <div class="badge">Chrome / Edge · mic + screen</div>
+</header>
+
+<div class="sr-only" id="appHelp">
+    Transcripts and translations update live as audio is captured. Use the session controls to start or stop recording.
+</div>
+
+<div class="layout">
+
+    <!-- ══ LEFT — OPTIONS ══ -->
+    <div class="panel" id="optionsPanel">
+
+        <!-- Voice languages -->
+        <div class="sec">
+            <span class="lbl">Voice Languages</span>
+            <div>
+                <label class="lbl" for="lang1" style="margin-bottom:4px;display:flex;align-items:center;gap:5px;">
+                    <span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--v1);"></span>
+                    Voice 1 — Your Microphone
+                </label>
+                <select id="lang1" aria-describedby="appHelp" onchange="onLangChange()"></select>
+            </div>
+            <div>
+                <label class="lbl" for="lang2" style="margin-bottom:4px;display:flex;align-items:center;gap:5px;">
+                    <span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--v2);"></span>
+                    Voice 2 — Screen / Remote Audio
+                </label>
+                <select id="lang2" aria-describedby="appHelp" onchange="onLangChange()"></select>
+            </div>
+            <div class="subtle-note">Each utterance can be in either selected language and will be translated into the other one.</div>
+        </div>
+
+        <!-- Audio sources -->
+        <div class="sec">
+            <span class="lbl">Audio Sources</span>
+
+            <div>
+                <label class="lbl" for="captureMode" style="margin-bottom:4px;">Capture Mode</label>
+                <select id="captureMode" aria-describedby="appHelp" onchange="onCaptureModeChange()">
+                    <option value="mic-only" selected>Mic only</option>
+                    <option value="mic-plus-tab">Mic + shared tab audio</option>
+                </select>
+            </div>
+
+            <!-- Microphone -->
+            <div class="source-row">
+                <span class="src-dot" id="micDot"></span>
+                <span class="src-label" style="color:var(--v1);">Mic (V1)</span>
+                <select id="micSelect" style="flex:1;font-size:.77rem;padding:5px 8px;" onchange="onMicChange()"></select>
+            </div>
+
+            <!-- Shared tab audio -->
+            <div class="source-row">
+                <span class="src-dot" id="screenDot"></span>
+                <span class="src-label" style="color:var(--v2);">Tab (V2)</span>
+                <span class="src-detail" id="screenDetail">Not sharing</span>
+                <button class="btn-sm src-btn" id="screenBtn" onclick="toggleScreenCapture()">Share</button>
+            </div>
+        </div>
+
+        <!-- API -->
+        <div class="sec">
+            <span class="lbl">API Settings</span>
+            <div>
+                <label class="lbl" for="openaiKey" style="margin-bottom:4px;">OpenAI Key <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--muted-2);">(Whisper + translation)</span></label>
+                <input type="password" id="openaiKey" placeholder="sk-..." autocomplete="new-password" spellcheck="false" aria-describedby="openaiKeyHelp">
+                <div class="sr-only" id="openaiKeyHelp">The key is used for model loading, transcription, and translation in the browser.</div>
+            </div>
+            <div>
+                <label class="lbl" for="transcriptionModel" style="margin-bottom:4px;">Transcription Model <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--muted-2);">(for room mic or shared audio)</span></label>
+                <select id="transcriptionModel" aria-describedby="appHelp"></select>
+            </div>
+            <div>
+                <label class="lbl" for="translationModel" style="margin-bottom:4px;">Translation Model</label>
+                <select id="translationModel" aria-describedby="appHelp"></select>
+            </div>
+            <div class="tog-row">
+                <label class="tog" for="useAltTranslation">
+                    <input type="checkbox" id="useAltTranslation" onchange="toggleAltTranslation()" aria-describedby="altTranslationHelp">
+                    <span class="t-tr" aria-hidden="true"></span>
+                    <span class="t-th" aria-hidden="true"></span>
+                </label>
+                <label for="useAltTranslation" style="cursor:pointer;">Use different provider for translation</label>
+            </div>
+            <div id="altTranslationFields" class="hidden" style="display:flex;flex-direction:column;gap:8px;">
+                <div class="sr-only" id="altTranslationHelp">When enabled, translation can use a provider and key separate from transcription.</div>
+                <div>
+                    <label class="lbl" for="translationProvider" style="margin-bottom:4px;">Translation Provider</label>
+                    <select id="translationProvider" aria-describedby="appHelp" onchange="onTransProviderChange()">
+                        <option value="openai">OpenAI</option>
+                        <option value="anthropic">Anthropic</option>
+                        <option value="openrouter">OpenRouter</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="lbl" for="translationKey" style="margin-bottom:4px;">Translation Key</label>
+                    <input type="password" id="translationKey" placeholder="sk-..." spellcheck="false" aria-describedby="translationKeyHelp">
+                    <div class="sr-only" id="translationKeyHelp">Only needed when translation uses a different provider from transcription.</div>
+                </div>
+            </div>
+            <div class="tog-row">
+                <label class="tog" for="autoTranslate">
+                    <input type="checkbox" id="autoTranslate" checked aria-describedby="autoTranslateHelp">
+                    <span class="t-tr" aria-hidden="true"></span>
+                    <span class="t-th" aria-hidden="true"></span>
+                </label>
+                <label for="autoTranslate" style="cursor:pointer;">Auto-translate each utterance</label>
+                <span class="sr-only" id="autoTranslateHelp">When enabled, every utterance is translated automatically after transcription.</span>
+            </div>
+        </div>
+
+        <!-- Controls -->
+        <div class="sec" style="flex:1;justify-content:flex-end;">
+            <div id="alertBox" class="alert" role="alert" aria-live="assertive"></div>
+            <div class="btn-row">
+                <button class="btn btn-primary" id="startBtn" onclick="startSession()">Start Session</button>
+                <button class="btn btn-stop hidden" id="stopBtn" onclick="stopSession()">Stop</button>
+            </div>
+            <div class="btn-row">
+                <button class="btn btn-ghost btn-sm" id="exportBtn" onclick="exportCSV()" disabled style="flex:1;width:auto;">Export CSV</button>
+                <button class="btn btn-ghost btn-sm" onclick="clearSession()" style="flex:1;width:auto;">Clear</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="sidebar-resize" id="sidebarResize" title="Drag to resize the sidebar" aria-hidden="true"></div>
+
+    <div class="panel" id="overviewPanel">
+        <div class="overview-hero">
+            <div class="overview-kicker">Conversation</div>
+            <div class="overview-title">Live call bridge</div>
+            <div class="overview-copy">Your mic and remote audio stay in one workspace so transcript and translation remain side by side while the session runs.</div>
+        </div>
+        <div class="overview-stats">
+            <div class="stat-card">
+                <span class="k">Utterances</span>
+                <span class="v" id="statUtt">0</span>
+                <span class="sub">Across both voices</span>
+            </div>
+            <div class="stat-card">
+                <span class="k">Input tok</span>
+                <span class="v" id="statIn">0</span>
+                <span class="sub">Prompt usage</span>
+            </div>
+            <div class="stat-card">
+                <span class="k">Output tok</span>
+                <span class="v" id="statOut">0</span>
+                <span class="sub">Model responses</span>
+            </div>
+            <div class="stat-card">
+                <span class="k">Duration</span>
+                <span class="v" id="statDuration">0:00</span>
+                <span class="sub">Current session</span>
+            </div>
+            <div class="stat-card">
+                <span class="k">Capture</span>
+                <span class="v" id="statMode">Mic + tab</span>
+                <span class="sub" id="statRemote">Waiting for tab audio</span>
+            </div>
+            <div class="stat-card">
+                <span class="k">Session</span>
+                <span class="v" id="statState">Idle</span>
+                <span class="sub">Live status</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- ══ MIDDLE — LIVE CONVERSATION ══ -->
+    <div class="panel" id="convPanel" aria-labelledby="convTitle">
+        <div class="ph">
+            <span class="ph-title" id="convTitle">Live Conversation</span>
+            <div class="ph-right">
+                <span class="sdot s-idle" id="statusDot"></span>
+                <span id="statusText">Idle</span>
+                <span class="timer hidden" id="timerEl">0:00</span>
+            </div>
+        </div>
+
+        <div class="t-area" id="convArea" role="log" aria-live="polite" aria-relevant="additions text" aria-atomic="false" aria-label="Conversation transcript" tabindex="0">
+            <div class="empty-state" id="convEmpty">
+                <div class="empty-icon">🎙️</div>
+                <div class="empty-text"><strong>Press Start Session.</strong><br><br>Voice 1 (orange) = your microphone.<br>Voice 2 (blue) = shared browser tab audio when enabled.<br><br>With an OpenAI transcription model, mic-only can also try room-mic diarization for two nearby speakers.</div>
+            </div>
+        </div>
+
+        <div class="interim-wrap">
+            <div class="interim" id="interimBox" data-v="1" role="status" aria-live="polite" aria-atomic="true">Press Start to begin.</div>
+        </div>
+    </div>
+
+    <!-- ══ RIGHT — TRANSLATION ══ -->
+    <div class="panel" id="transPanel" aria-labelledby="transTitle">
+        <div class="ph">
+            <span class="ph-title" id="transTitle">Translation</span>
+            <span id="transSubtitle" style="font-size:.74rem;color:var(--muted);">V1 ↔ V2 languages</span>
+        </div>
+
+        <div class="t-area" id="transArea" role="log" aria-live="polite" aria-relevant="additions text" aria-atomic="false" aria-label="Translation transcript" tabindex="0">
+            <div class="empty-state" id="transEmpty">
+                <div class="empty-icon">🌐</div>
+                <div class="empty-text">Translations appear here, synced with the conversation.<br><br>V1 words → V2's language<br>V2 words → V1's language</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // ── LANGUAGES ──
+    const LANGS = [
+        { code:'en-US', label:'English (US)', whisper:'en' },
+        { code:'en-GB', label:'English (UK)', whisper:'en' },
+        { code:'de-DE', label:'German', whisper:'de' },
+        { code:'fr-FR', label:'French', whisper:'fr' },
+        { code:'es-ES', label:'Spanish (Spain)', whisper:'es' },
+        { code:'es-MX', label:'Spanish (Mexico)', whisper:'es' },
+        { code:'it-IT', label:'Italian', whisper:'it' },
+        { code:'nl-NL', label:'Dutch', whisper:'nl' },
+        { code:'pt-PT', label:'Portuguese', whisper:'pt' },
+        { code:'pt-BR', label:'Portuguese (Brazil)', whisper:'pt' },
+        { code:'zh-CN', label:'Mandarin (Simplified)', whisper:'zh' },
+        { code:'ja-JP', label:'Japanese', whisper:'ja' },
+        { code:'ko-KR', label:'Korean', whisper:'ko' },
+        { code:'ar-SA', label:'Arabic', whisper:'ar' },
+        { code:'ru-RU', label:'Russian', whisper:'ru' },
+        { code:'pl-PL', label:'Polish', whisper:'pl' },
+        { code:'sv-SE', label:'Swedish', whisper:'sv' },
+        { code:'tr-TR', label:'Turkish', whisper:'tr' },
+        { code:'hi-IN', label:'Hindi', whisper:'hi' },
+        { code:'vi-VN', label:'Vietnamese', whisper:'vi' },
+        { code:'id-ID', label:'Indonesian', whisper:'id' },
+    ];
+
+    const TRANS_MODELS = {
+        anthropic:  ['claude-haiku-4-5-20251001','claude-sonnet-4-6'],
+        openrouter: ['openai/gpt-4o-mini','google/gemini-flash-1.5','anthropic/claude-3-5-haiku'],
+    };
+
+    // ── STATE ──
+    const SETTINGS_KEY = 'live-translate.ui.v1';
+    const MAX_VISIBLE_ENTRIES = 250;
+    let sessionState = 'idle';
+    let recognition = null, intentionalStop = false, pendingInterim = '';
+    let screenStream = null, screenRecorder = null, transcriptionQueue = [], isTranscribing = false;
+    let micRecorder = null, micChunkQueue = [], isMicTranscribing = false, micSpeakerMap = {};
+    let timerInterval = null, sessionStart = null;
+    let utterances = [], totalIn = 0, totalOut = 0;
+    let micStream = null;
+    let isScreenCapturePending = false;
+    let isSidebarDragging = false;
+    let sessionElapsedSec = 0;
+    let modelLoadSeq = 0;
+    let lastLoadedOpenAIKey = '';
+    let lastAlertKey = '';
+    let lastAlertAt = 0;
+    let savedSettings = {};
+
+    // ── INIT ──
+    function init() {
+        populateLangSelect(document.getElementById('lang1'));
+        populateLangSelect(document.getElementById('lang2'));
+        loadSavedSettings();
+        applySavedSettings();
+        onLangChange();
+        enumerateMics();
+        initTransModels();
+        onCaptureModeChange();
+        bindApiKeyListeners();
+        bindPersistenceListeners();
+        bindSidebarResize();
+        refreshOpenAIModelLists();
+        updateStats();
+    }
+
+    function loadSavedSettings() {
+        try {
+            savedSettings = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}') || {};
+        } catch (_) {
+            savedSettings = {};
+        }
+    }
+
+    function saveSettings() {
+        const next = {
+            lang1: document.getElementById('lang1').value,
+            lang2: document.getElementById('lang2').value,
+            captureMode: document.getElementById('captureMode').value,
+            micSelect: document.getElementById('micSelect').value || savedSettings.micSelect || '',
+            useAltTranslation: document.getElementById('useAltTranslation').checked,
+            translationProvider: document.getElementById('translationProvider').value,
+            transcriptionModel: document.getElementById('transcriptionModel').value || savedSettings.transcriptionModel || '',
+            translationModel: document.getElementById('translationModel').value || savedSettings.translationModel || '',
+            autoTranslate: document.getElementById('autoTranslate').checked,
+            sidebarWidth: getSidebarWidth(),
+        };
+
+        try {
+            localStorage.setItem(SETTINGS_KEY, JSON.stringify(next));
+            savedSettings = next;
+        } catch (_) {}
+    }
+
+    function getSidebarWidth() {
+        const raw = getComputedStyle(document.documentElement).getPropertyValue('--sidebar-w').trim();
+        const parsed = parseInt(raw, 10);
+        return Number.isFinite(parsed) ? parsed : 360;
+    }
+
+    function applySavedSettings() {
+        const lang1 = savedSettings.lang1 || 'en-US';
+        const lang2 = savedSettings.lang2 || 'de-DE';
+        const captureMode = savedSettings.captureMode || 'mic-only';
+        const micSelect = savedSettings.micSelect || '';
+        const useAltTranslation = savedSettings.useAltTranslation ?? false;
+        const translationProvider = savedSettings.translationProvider || 'openai';
+        const autoTranslate = savedSettings.autoTranslate ?? true;
+        const sidebarWidth = Number(savedSettings.sidebarWidth);
+
+        document.getElementById('lang1').value = lang1;
+        document.getElementById('lang2').value = lang2;
+        document.getElementById('captureMode').value = captureMode;
+        document.getElementById('micSelect').value = micSelect;
+        document.getElementById('useAltTranslation').checked = !!useAltTranslation;
+        document.getElementById('translationProvider').value = translationProvider;
+        document.getElementById('autoTranslate').checked = !!autoTranslate;
+
+        if (Number.isFinite(sidebarWidth) && sidebarWidth >= 320 && sidebarWidth <= 520) {
+            document.documentElement.style.setProperty('--sidebar-w', sidebarWidth + 'px');
+        }
+
+        const transcriptionModel = savedSettings.transcriptionModel || '';
+        const translationModel = savedSettings.translationModel || '';
+        const transSelect = document.getElementById('transcriptionModel');
+        const translationSelect = document.getElementById('translationModel');
+        if (transcriptionModel) {
+            transSelect.dataset.preferredValue = transcriptionModel;
+            transSelect.value = transcriptionModel;
+        }
+        if (translationModel) {
+            translationSelect.dataset.preferredValue = translationModel;
+            translationSelect.value = translationModel;
+        }
+
+        toggleAltTranslation(false);
+    }
+
+    function bindPersistenceListeners() {
+        const ids = ['lang1', 'lang2', 'captureMode', 'micSelect', 'translationProvider', 'transcriptionModel', 'translationModel', 'autoTranslate', 'useAltTranslation'];
+        ids.forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.addEventListener('change', saveSettings);
+        });
+        window.addEventListener('beforeunload', saveSettings);
+    }
+
+    function rememberPreferredValue(selectEl, value) {
+        if (!selectEl) return;
+        selectEl.dataset.preferredValue = value || '';
+    }
+
+    function preferredValueOf(selectEl) {
+        return selectEl?.dataset?.preferredValue || '';
+    }
+
+    function reportAlert(msg, type = 'err') {
+        const key = `${type}:${msg}`;
+        const now = Date.now();
+        if (key === lastAlertKey && now - lastAlertAt < 2500) return;
+        lastAlertKey = key;
+        lastAlertAt = now;
+        showAlert(msg, type);
+    }
+
+    async function enumerateMics() {
+        try {
+            // Need permission first to get device labels
+            const tmp = await navigator.mediaDevices.getUserMedia({audio:true,video:false});
+            tmp.getTracks().forEach(t => t.stop());
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            const mics = devices.filter(d => d.kind === 'audioinput');
+            const sel = document.getElementById('micSelect');
+            const preferred = savedSettings.micSelect || '';
+            sel.replaceChildren();
+            mics.forEach(d => {
+                const opt = document.createElement('option');
+                opt.value = d.deviceId;
+                opt.textContent = d.label || ('Microphone ' + d.deviceId.slice(0,6));
+                sel.appendChild(opt);
+            });
+            if (preferred) sel.value = preferred;
+            if (!sel.value && sel.options.length) sel.value = sel.options[0].value;
+            saveSettings();
+        } catch(e) {
+            const sel = document.getElementById('micSelect');
+            sel.replaceChildren();
+            const opt = document.createElement('option');
+            opt.value = '';
+            opt.textContent = 'Default microphone';
+            sel.appendChild(opt);
+            sel.disabled = false;
+        }
+    }
+
+    function initTransModels() {
+        const p = document.getElementById('translationProvider').value;
+        if (p === 'openai') {
+            refreshOpenAIModelLists();
+            return;
+        }
+        populateSelect(document.getElementById('translationModel'), TRANS_MODELS[p], preferredValueOf(document.getElementById('translationModel')));
+        saveSettings();
+    }
+
+    function bindApiKeyListeners() {
+        const keyInput = document.getElementById('openaiKey');
+        keyInput.addEventListener('change', refreshOpenAIModelLists);
+        keyInput.addEventListener('blur', refreshOpenAIModelLists);
+        keyInput.addEventListener('input', () => {
+            if (keyInput.value.trim()) refreshOpenAIModelLists();
+        });
+    }
+
+    function bindSidebarResize() {
+        const handle = document.getElementById('sidebarResize');
+        if (!handle) return;
+
+        handle.addEventListener('pointerdown', (e) => {
+            if (window.innerWidth <= 1100) return;
+            isSidebarDragging = true;
+            handle.classList.add('is-dragging');
+            handle.setPointerCapture(e.pointerId);
+            document.body.style.cursor = 'col-resize';
+            document.body.style.userSelect = 'none';
+        });
+
+        handle.addEventListener('pointermove', (e) => {
+            if (!isSidebarDragging) return;
+            const layout = document.querySelector('.layout');
+            if (!layout) return;
+            const rect = layout.getBoundingClientRect();
+            const desired = e.clientX - rect.left - 14;
+            const max = Math.max(340, Math.min(520, rect.width * 0.45));
+            const width = Math.max(320, Math.min(desired, max));
+            document.documentElement.style.setProperty('--sidebar-w', width + 'px');
+        });
+
+        const stopDragging = (e) => {
+            if (!isSidebarDragging) return;
+            isSidebarDragging = false;
+            handle.classList.remove('is-dragging');
+            document.body.style.cursor = '';
+            document.body.style.userSelect = '';
+            saveSettings();
+            if (e?.pointerId != null) {
+                try { handle.releasePointerCapture(e.pointerId); } catch(_) {}
+            }
+        };
+
+        handle.addEventListener('pointerup', stopDragging);
+        handle.addEventListener('pointercancel', stopDragging);
+    }
+
+    function onTransProviderChange() {
+        initTransModels();
+        saveSettings();
+    }
+
+    function toggleAltTranslation(shouldPersist = true) {
+        const on = document.getElementById('useAltTranslation').checked;
+        document.getElementById('altTranslationFields').classList.toggle('hidden', !on);
+        initTransModels();
+        if (shouldPersist) saveSettings();
+    }
+
+    function onLangChange() {
+        const l1 = LANGS.find(l => l.code === document.getElementById('lang1').value);
+        const l2 = LANGS.find(l => l.code === document.getElementById('lang2').value);
+        if (l1 && l2)
+            document.getElementById('transSubtitle').textContent = l1.label + ' ↔ ' + l2.label;
+        saveSettings();
+    }
+
+    function langOf(n) { return document.getElementById('lang' + n).value; }
+    function langLabelOf(n) { return (LANGS.find(l => l.code === langOf(n)) || {label:langOf(n)}).label; }
+    function whisperLangOf(n) { return (LANGS.find(l => l.code === langOf(n)) || {whisper:null}).whisper; }
+    function getCaptureMode() { return document.getElementById('captureMode').value; }
+    function getTranscriptionModel() { return document.getElementById('transcriptionModel').value; }
+    function getOpenAIKey() { return document.getElementById('openaiKey').value.trim(); }
+    function usesDiarizationModel() { return /diarize/.test(getTranscriptionModel()); }
+    function shouldUseOpenAIMicMode() {
+        return getCaptureMode() === 'mic-only' && !!getOpenAIKey() && !!getTranscriptionModel();
+    }
+
+    function populateLangSelect(selectEl) {
+        selectEl.replaceChildren();
+        LANGS.forEach(lang => {
+            const opt = document.createElement('option');
+            opt.value = lang.code;
+            opt.textContent = lang.label;
+            selectEl.appendChild(opt);
+        });
+    }
+
+    function populateSelect(selectEl, values, preferredValue = '') {
+        const existing = selectEl.value;
+        const storedPreferred = preferredValue || preferredValueOf(selectEl);
+        selectEl.replaceChildren();
+        values.forEach(value => {
+            const opt = document.createElement('option');
+            opt.value = value;
+            opt.textContent = value;
+            selectEl.appendChild(opt);
+        });
+        const desired = [storedPreferred, existing].find(v => v && values.includes(v)) || values[0] || '';
+        selectEl.value = desired;
+        selectEl.disabled = values.length === 0;
+        rememberPreferredValue(selectEl, selectEl.value);
+    }
+
+    function setSelectPlaceholder(selectEl, text) {
+        selectEl.replaceChildren();
+        const opt = document.createElement('option');
+        opt.value = '';
+        opt.textContent = text;
+        selectEl.appendChild(opt);
+        selectEl.value = '';
+        selectEl.disabled = true;
+        rememberPreferredValue(selectEl, preferredValueOf(selectEl));
+    }
+
+    function classifyOpenAIModels(modelIds) {
+        const transcription = modelIds
+            .filter(id => /(^whisper-)|transcribe/.test(id))
+            .sort();
+
+        const translation = modelIds
+            .filter(id => {
+                if (!id) return false;
+                if (/whisper|transcribe|embedding|moderation|tts|image|realtime|audio/.test(id)) return false;
+                return /^(gpt-|o[1-9]|chatgpt-)/.test(id);
+            })
+            .sort();
+
+        return { transcription, translation };
+    }
+
+    async function refreshOpenAIModelLists() {
+        const key = getOpenAIKey();
+        const provider = document.getElementById('translationProvider').value;
+
+        if (!key) {
+            setSelectPlaceholder(document.getElementById('transcriptionModel'), 'Enter OpenAI key');
+            if (provider === 'openai') {
+                setSelectPlaceholder(document.getElementById('translationModel'), 'Enter OpenAI key');
+            }
+            lastLoadedOpenAIKey = '';
+            return;
+        }
+
+        if (key === lastLoadedOpenAIKey && document.getElementById('transcriptionModel').options.length > 1) return;
+
+        const seq = ++modelLoadSeq;
+        setSelectPlaceholder(document.getElementById('transcriptionModel'), 'Loading models…');
+        if (provider === 'openai') {
+            setSelectPlaceholder(document.getElementById('translationModel'), 'Loading models…');
+        }
+
+        try {
+            const r = await fetch('https://api.openai.com/v1/models', {
+                headers: { 'Authorization': 'Bearer ' + key }
+            });
+            if (!r.ok) {
+                const e = await r.json().catch(()=>({}));
+                throw new Error(e?.error?.message || ('HTTP ' + r.status));
+            }
+            const data = await r.json();
+            if (seq !== modelLoadSeq) return;
+
+            const modelIds = (data.data || []).map(m => m.id).filter(Boolean);
+            const { transcription, translation } = classifyOpenAIModels(modelIds);
+            const preferredTranscription =
+                transcription.includes('gpt-4o-transcribe-diarize') ? 'gpt-4o-transcribe-diarize' :
+                transcription.includes('gpt-4o-transcribe') ? 'gpt-4o-transcribe' :
+                transcription.includes('gpt-4o-mini-transcribe') ? 'gpt-4o-mini-transcribe' :
+                'whisper-1';
+
+            if (transcription.length) {
+                populateSelect(document.getElementById('transcriptionModel'), transcription, preferredTranscription);
+            } else {
+                setSelectPlaceholder(document.getElementById('transcriptionModel'), 'No transcription models found');
+            }
+
+            if (provider === 'openai') {
+                if (translation.length) {
+                    populateSelect(document.getElementById('translationModel'), translation, preferredValueOf(document.getElementById('translationModel')) || 'gpt-4o-mini');
+                } else {
+                    setSelectPlaceholder(document.getElementById('translationModel'), 'No translation models found');
+                }
+            }
+
+            lastLoadedOpenAIKey = key;
+            clearAlert();
+            saveSettings();
+        } catch (e) {
+            if (seq !== modelLoadSeq) return;
+            setSelectPlaceholder(document.getElementById('transcriptionModel'), 'Model load failed');
+            if (provider === 'openai') {
+                setSelectPlaceholder(document.getElementById('translationModel'), 'Model load failed');
+            }
+            reportAlert('Could not load OpenAI models: ' + (e?.message || 'unknown error'), 'err');
+        }
+    }
+
+    // ── MIC CHANGE ──
+    function onMicChange() {
+        saveSettings();
+        if (sessionState !== 'active') return;
+        if (shouldUseOpenAIMicMode()) {
+            stopMicRecorder();
+            startMicRecorder();
+        } else {
+            restartSpeechRecognition();
+        }
+    }
+    async function onCaptureModeChange() {
+        const isMicOnly = getCaptureMode() === 'mic-only';
+        const btn = document.getElementById('screenBtn');
+        const detail = document.getElementById('screenDetail');
+
+        if (isMicOnly && screenStream) stopScreenCapture();
+
+        if (sessionState === 'active') {
+            if (isMicOnly) {
+                if (shouldUseOpenAIMicMode()) {
+                    stopSpeechRecognition();
+                    if (!micRecorder) await startMicRecorder();
+                } else {
+                    stopMicRecorder();
+                    if (!recognition) startSpeechRecognition();
+                }
+            } else {
+                stopMicRecorder();
+                if (!recognition) startSpeechRecognition();
+                if (screenStream && !screenRecorder) startScreenRecorder();
+            }
+        }
+
+        document.getElementById('screenDot').className = 'src-dot' + (screenStream && !isMicOnly ? ' live' : '');
+        detail.textContent = isMicOnly ? 'Mic-only mode active' : (screenStream ? detail.textContent : 'Not sharing');
+        btn.textContent = isMicOnly ? 'Disabled' : (screenStream ? 'Stop' : (isScreenCapturePending ? 'Waiting…' : 'Share'));
+        btn.disabled = isMicOnly || isScreenCapturePending;
+        updateStats();
+        saveSettings();
+    }
+
+    // ── SCREEN CAPTURE ──
+    async function toggleScreenCapture() {
+        if (getCaptureMode() === 'mic-only') return;
+        if (isScreenCapturePending) return;
+        if (screenStream) { stopScreenCapture(); return; }
+
+        if (!navigator.mediaDevices?.getDisplayMedia) {
+            showAlert('Screen audio capture is not supported in this browser. Please use Chrome or Edge.', 'err');
+            updateScreenUI(false, 'Unsupported browser');
+            return;
+        }
+
+        try {
+            isScreenCapturePending = true;
+            updateScreenUI(false, 'Waiting for share permission…', { pending: true });
+
+            // Browsers still require a visible surface selection even when we only want its audio.
+            const stream = await navigator.mediaDevices.getDisplayMedia({
+                audio: {
+                    suppressLocalAudioPlayback: false
+                },
+                video: {
+                    displaySurface: 'browser'
+                },
+                preferCurrentTab: false,
+                selfBrowserSurface: 'exclude',
+                surfaceSwitching: 'include',
+                systemAudio: 'include',
+                monitorTypeSurfaces: 'exclude'
+            });
+
+            // Discard video immediately; we only need the shared audio track.
+            stream.getVideoTracks().forEach(t => t.stop());
+
+            const audioTracks = stream.getAudioTracks();
+            if (!audioTracks.length) {
+                showAlert('No audio track was shared. Choose a browser tab and turn on "Share audio" in the picker. Window or full-screen sharing often has no audio track on Mac.', 'err');
+                stream.getTracks().forEach(t => t.stop());
+                updateScreenUI(false, 'Pick a tab with audio');
+                return;
+            }
+
+            screenStream = stream;
+            clearAlert();
+            updateScreenUI(true, audioTracks[0].label || 'Shared tab audio');
+
+            // Start recording when session is active
+            if (sessionState === 'active') startScreenRecorder();
+
+            stream.getAudioTracks()[0].onended = () => {
+                stopScreenCapture();
+            };
+        } catch(e) {
+            if (e.name === 'NotAllowedError') {
+                updateScreenUI(false, 'Not sharing');
+            } else {
+                showAlert('Screen capture failed: ' + e.message, 'err');
+                updateScreenUI(false, 'Share failed');
+            }
+        } finally {
+            isScreenCapturePending = false;
+            if (!screenStream) updateScreenUI(false, document.getElementById('screenDetail').textContent || 'Not sharing');
+            onCaptureModeChange();
+        }
+    }
+
+    function stopScreenCapture() {
+        if (screenRecorder && screenRecorder.state !== 'inactive') {
+            try { screenRecorder.stop(); } catch(_) {}
+        }
+        screenRecorder = null;
+        if (screenStream) { screenStream.getTracks().forEach(t => t.stop()); screenStream = null; }
+        updateScreenUI(false, 'Not sharing');
+        onCaptureModeChange();
+    }
+
+    function updateScreenUI(live, label, opts = {}) {
+        const btn = document.getElementById('screenBtn');
+        const isMicOnly = getCaptureMode() === 'mic-only';
+        document.getElementById('screenDot').className = 'src-dot' + (live && !isMicOnly ? ' live' : '');
+        document.getElementById('screenDetail').textContent = label;
+        btn.textContent = isMicOnly ? 'Disabled' : (live ? 'Stop' : (opts.pending ? 'Waiting…' : 'Share'));
+        btn.disabled = isMicOnly || !!opts.pending;
+        updateStats();
+    }
+
+    function startScreenRecorder() {
+        if (!screenStream || sessionState !== 'active') return;
+        if (typeof MediaRecorder === 'undefined') {
+            showAlert('This browser does not support screen-audio recording. Please use a recent version of Chrome or Edge.', 'err');
+            return;
+        }
+
+        const audioStream = new MediaStream(screenStream.getAudioTracks());
+        const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+            ? 'audio/webm;codecs=opus' : 'audio/webm';
+
+        screenRecorder = new MediaRecorder(audioStream, { mimeType });
+        transcriptionQueue = [];
+
+        screenRecorder.ondataavailable = (e) => {
+            if (e.data && e.data.size > 1500) { // skip tiny/silent chunks
+                transcriptionQueue.push(e.data);
+                drainTranscriptionQueue();
+            }
+        };
+
+        screenRecorder.start(4000); // 4-second chunks
+    }
+
+    async function drainTranscriptionQueue() {
+        if (isTranscribing || !transcriptionQueue.length) return;
+        isTranscribing = true;
+        const blob = transcriptionQueue.shift();
+        await transcribeChunk(blob);
+        isTranscribing = false;
+        drainTranscriptionQueue();
+    }
+
+    async function transcribeChunk(audioBlob) {
+        const key = document.getElementById('openaiKey').value.trim();
+        if (!key) return;
+        const wl = whisperLangOf(2);
+        const model = getTranscriptionModel();
+        if (!model) return;
+
+        const fd = new FormData();
+        fd.append('file', audioBlob, 'audio.webm');
+        fd.append('model', model);
+        if (wl && model === 'whisper-1') fd.append('language', wl);
+
+        try {
+            const r = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+                method: 'POST', headers: { 'Authorization': 'Bearer ' + key }, body: fd
+            });
+            if (!r.ok) {
+                const e = await r.json().catch(()=>({}));
+                reportAlert('Voice 2 transcription failed: ' + (e?.error?.message || ('HTTP ' + r.status)) + '. Recording continues.', 'err');
+                return;
+            }
+            const data = await r.json();
+            const text = (data.text || '').trim();
+            if (text) finalizeUtterance(2, text);
+        } catch(e) {
+            reportAlert('Voice 2 transcription request failed: ' + (e?.message || 'unknown error') + '. Recording continues.', 'err');
+        }
+    }
+
+    // ── SPEECH RECOGNITION (Voice 1) ──
+    function startSpeechRecognition() {
+        const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SR) { showAlert('Web Speech API not supported. Please use Chrome or Edge.', 'err'); return false; }
+
+        if (recognition) { try { recognition.abort(); } catch(_){} recognition = null; }
+
+        recognition = new SR();
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        recognition.lang = langOf(1);
+
+        recognition.onstart = () => setInterim('', true);
+
+        recognition.onresult = (e) => {
+            let interim = '';
+            for (let i = e.resultIndex; i < e.results.length; i++) {
+                if (e.results[i].isFinal) {
+                    const t = e.results[i][0].transcript.trim();
+                    if (t) finalizeUtterance(1, t);
+                } else { interim += e.results[i][0].transcript; }
+            }
+            pendingInterim = interim;
+            setInterim(interim, true);
+        };
+
+        recognition.onerror = (e) => {
+            if (e.error === 'no-speech' || e.error === 'aborted') return;
+            if (e.error === 'not-allowed') { showAlert('Microphone access denied.', 'err'); stopSession(); }
+        };
+
+        recognition.onend = () => {
+            if (sessionState === 'active' && !intentionalStop)
+                try { recognition.start(); } catch(_){}
+            intentionalStop = false;
+        };
+
+        try { recognition.start(); return true; } catch(e) { showAlert('Mic error: ' + e.message, 'err'); return false; }
+    }
+
+    function restartSpeechRecognition() {
+        if (pendingInterim.trim()) { finalizeUtterance(1, pendingInterim.trim()); pendingInterim = ''; }
+        intentionalStop = true;
+        if (recognition) { try { recognition.abort(); } catch(_){} recognition = null; }
+        setTimeout(startSpeechRecognition, 100);
+    }
+
+    function stopSpeechRecognition() {
+        if (pendingInterim.trim()) { finalizeUtterance(1, pendingInterim.trim()); pendingInterim = ''; }
+        intentionalStop = true;
+        if (recognition) { try { recognition.abort(); } catch(_){} recognition = null; }
+    }
+
+    async function startMicRecorder() {
+        if (sessionState !== 'active') return false;
+        if (typeof MediaRecorder === 'undefined') {
+            showAlert('This browser does not support microphone recording. Please use a recent Chrome or Edge version.', 'err');
+            return false;
+        }
+
+        try {
+            if (micStream) {
+                micStream.getTracks().forEach(t => t.stop());
+                micStream = null;
+            }
+
+            const deviceId = document.getElementById('micSelect').value;
+            micStream = await navigator.mediaDevices.getUserMedia({
+                audio: deviceId ? { deviceId: { exact: deviceId }, echoCancellation: true, noiseSuppression: true } : { echoCancellation: true, noiseSuppression: true },
+                video: false
+            });
+
+            const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+                ? 'audio/webm;codecs=opus' : 'audio/webm';
+
+            micRecorder = new MediaRecorder(micStream, { mimeType });
+            micChunkQueue = [];
+            micSpeakerMap = {};
+            pendingInterim = '';
+            setInterim('', false);
+
+            micRecorder.ondataavailable = (e) => {
+                if (e.data && e.data.size > 1200) {
+                    micChunkQueue.push(e.data);
+                    drainMicChunkQueue();
+                }
+            };
+
+            micRecorder.start(2000);
+            return true;
+        } catch (e) {
+            showAlert('Microphone capture failed: ' + e.message, 'err');
+            return false;
+        }
+    }
+
+    async function drainMicChunkQueue() {
+        if (isMicTranscribing || !micChunkQueue.length) return;
+        isMicTranscribing = true;
+        const blob = micChunkQueue.shift();
+        await transcribeMicChunk(blob);
+        isMicTranscribing = false;
+        drainMicChunkQueue();
+    }
+
+    function assignDiarizedVoice(speakerId) {
+        if (micSpeakerMap[speakerId]) return micSpeakerMap[speakerId];
+        const usedVoices = Object.values(micSpeakerMap);
+        const nextVoice = usedVoices.includes(1) ? 2 : 1;
+        micSpeakerMap[speakerId] = nextVoice;
+        return nextVoice;
+    }
+
+    async function transcribeMicChunk(audioBlob) {
+        const key = getOpenAIKey();
+        if (!key) return;
+        const model = getTranscriptionModel();
+        if (!model) return;
+        const fd = new FormData();
+        fd.append('file', audioBlob, 'mic-audio.webm');
+        fd.append('model', model);
+
+        if (usesDiarizationModel()) {
+            fd.append('response_format', 'diarized_json');
+            fd.append('chunking_strategy', 'auto');
+        }
+
+        try {
+            const r = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+                method: 'POST',
+                headers: { 'Authorization': 'Bearer ' + key },
+                body: fd
+            });
+            if (!r.ok) {
+                const e = await r.json().catch(()=>({}));
+                reportAlert('Voice 1 transcription failed: ' + (e?.error?.message || ('HTTP ' + r.status)) + '. Recording continues.', 'err');
+                return;
+            }
+
+            const data = await r.json();
+            if (usesDiarizationModel() && Array.isArray(data.segments) && data.segments.length) {
+                let foundAny = false;
+                data.segments.forEach(seg => {
+                    const text = (seg.text || '').trim();
+                    const speakerId = seg.speaker || 'speaker_0';
+                    if (!text) return;
+                    foundAny = true;
+                    finalizeUtterance(assignDiarizedVoice(speakerId), text);
+                });
+                if (foundAny) return;
+            }
+
+            const text = (data.text || '').trim();
+            if (text) finalizeUtterance(1, text);
+        } catch (e) {
+            reportAlert('Voice 1 transcription request failed: ' + (e?.message || 'unknown error') + '. Recording continues.', 'err');
+        }
+    }
+
+    function stopMicRecorder() {
+        if (micRecorder && micRecorder.state !== 'inactive') {
+            try { micRecorder.stop(); } catch(_) {}
+        }
+        micRecorder = null;
+        micChunkQueue = [];
+        isMicTranscribing = false;
+        if (micStream) {
+            micStream.getTracks().forEach(t => t.stop());
+            micStream = null;
+        }
+    }
+
+    // ── SESSION ──
+    async function startSession() {
+        if (sessionState === 'active') return;
+        clearAlert();
+        sessionState = 'active';
+        sessionStart = Date.now();
+        sessionElapsedSec = 0;
+
+        document.getElementById('startBtn').classList.add('hidden');
+        document.getElementById('stopBtn').classList.remove('hidden');
+        document.getElementById('statusDot').className = 'sdot s-rec';
+        document.getElementById('statusText').textContent = 'Recording';
+        document.getElementById('timerEl').classList.remove('hidden');
+        document.getElementById('convEmpty').classList.add('hidden');
+        document.getElementById('transEmpty').classList.add('hidden');
+        document.getElementById('micDot').classList.add('live');
+
+        timerInterval = setInterval(tickTimer, 1000);
+        if (getCaptureMode() === 'mic-only') {
+            if (shouldUseOpenAIMicMode()) {
+                const ok = await startMicRecorder();
+                if (ok) {
+                    showAlert(usesDiarizationModel()
+                        ? 'Mic-only room mode is active. The app is using OpenAI diarization to try to separate two nearby speakers from one microphone.'
+                        : 'Mic-only room mode is active. The app is transcribing the shared microphone feed in real time.', 'ok');
+                } else {
+                    startSpeechRecognition();
+                    showAlert('OpenAI room-mic mode could not start, so the app fell back to browser mic transcription for Voice 1.', 'ok');
+                }
+            } else {
+                startSpeechRecognition();
+                showAlert('Mic-only mode is active. Voice 1 will auto-transcribe from your microphone.', 'ok');
+            }
+        } else if (screenStream) {
+            startSpeechRecognition();
+            startScreenRecorder();
+        } else {
+            startSpeechRecognition();
+            showAlert('Session started with mic only for now. Click Share and choose a browser tab with "Share audio" if you want Voice 2 as well.', 'ok');
+        }
+    }
+
+    function stopSession() {
+        sessionState = 'idle';
+        stopSpeechRecognition();
+        stopMicRecorder();
+        if (screenRecorder && screenRecorder.state !== 'inactive') { try { screenRecorder.stop(); } catch(_){} screenRecorder = null; }
+        clearInterval(timerInterval); timerInterval = null;
+
+        document.getElementById('startBtn').classList.remove('hidden');
+        document.getElementById('stopBtn').classList.add('hidden');
+        document.getElementById('statusDot').className = 'sdot s-idle';
+        document.getElementById('statusText').textContent = 'Stopped';
+        document.getElementById('timerEl').classList.add('hidden');
+        document.getElementById('timerEl').textContent = '0:00';
+        document.getElementById('micDot').classList.remove('live');
+        setInterim('', false);
+        if (screenStream) showAlert('Session stopped. Screen sharing is still active and ready for the next session.', 'ok');
+
+        if (utterances.length) document.getElementById('exportBtn').disabled = false;
+        updateStats();
+    }
+
+    function clearSession() {
+        stopSession();
+        utterances = []; totalIn = 0; totalOut = 0;
+        micSpeakerMap = {};
+        sessionElapsedSec = 0;
+        document.getElementById('convArea').innerHTML =
+            '<div class="empty-state" id="convEmpty"><div class="empty-icon">🎙️</div><div class="empty-text"><strong>Press Start Session.</strong><br><br>Voice 1 (orange) = your microphone.<br>Voice 2 (blue) = shared browser tab audio when enabled.<br><br>With an OpenAI transcription model, mic-only can also try room-mic diarization for two nearby speakers.</div></div>';
+        document.getElementById('transArea').innerHTML =
+            '<div class="empty-state" id="transEmpty"><div class="empty-icon">🌐</div><div class="empty-text">Translations appear here, synced with the conversation.</div></div>';
+        updateStats();
+        document.getElementById('timerEl').classList.add('hidden');
+        document.getElementById('timerEl').textContent = '0:00';
+        document.getElementById('statusText').textContent = 'Idle';
+        document.getElementById('exportBtn').disabled = true;
+        onCaptureModeChange();
+        clearAlert();
+    }
+
+    // ── UTTERANCE ──
+    function finalizeUtterance(voiceN, text) {
+        const ts = new Date();
+        const id  = 'u' + Date.now() + Math.random().toString(36).slice(2,5);
+        const srcLabel = langLabelOf(voiceN);
+        const tgtVoice = voiceN === 1 ? 2 : 1;
+        const tgtLabel = langLabelOf(tgtVoice);
+        const tgtCode  = langOf(tgtVoice);
+
+        const utt = { id, ts, speaker: voiceN, srcLabel, tgtLabel, tgtCode, text, translation: null, tokIn:0, tokOut:0 };
+        utterances.push(utt);
+        updateStats();
+        addConvEntry(utt);
+        addTransEntry(utt);
+
+        const autoOn = document.getElementById('autoTranslate').checked;
+        if (autoOn) {
+            const key = getTransKey();
+            if (key) translateUtt(utt); else setTransText(id, '— add API key to enable translation —');
+        } else {
+            setTransText(id, '— auto-translate off —');
+        }
+    }
+
+    function addConvEntry(utt) {
+        const area = document.getElementById('convArea');
+        const el = document.createElement('div');
+        const meta = document.createElement('div');
+        const spk = document.createElement('span');
+        const time = document.createElement('span');
+        const lang = document.createElement('span');
+        const text = document.createElement('div');
+
+        el.className = 'entry'; el.dataset.v = utt.speaker; el.id = 'c-' + utt.id;
+        meta.className = 'emeta';
+        spk.className = 'espk';
+        time.className = 'etime';
+        lang.className = 'elang';
+        text.className = 'etext';
+        lang.id = 'cl-' + utt.id;
+
+        spk.textContent = 'Voice ' + utt.speaker;
+        time.textContent = fmtT(utt.ts);
+        lang.textContent = utt.srcLabel;
+        text.textContent = utt.text;
+
+        meta.appendChild(spk);
+        meta.appendChild(time);
+        meta.appendChild(lang);
+        el.appendChild(meta);
+        el.appendChild(text);
+        area.appendChild(el);
+        pruneVisibleEntries(area);
+        area.scrollTop = area.scrollHeight;
+    }
+
+    function addTransEntry(utt) {
+        const area = document.getElementById('transArea');
+        const el = document.createElement('div');
+        const meta = document.createElement('div');
+        const spk = document.createElement('span');
+        const time = document.createElement('span');
+        const lang = document.createElement('span');
+        const text = document.createElement('div');
+
+        el.className = 'entry'; el.dataset.v = utt.speaker; el.id = 't-' + utt.id;
+        meta.className = 'emeta';
+        spk.className = 'espk';
+        time.className = 'etime';
+        lang.className = 'elang';
+        text.className = 'etext pending';
+        text.id = 'tt-' + utt.id;
+        lang.id = 'tl-' + utt.id;
+
+        spk.textContent = 'Voice ' + utt.speaker;
+        time.textContent = fmtT(utt.ts);
+        lang.textContent = utt.srcLabel + ' → ' + utt.tgtLabel;
+        text.textContent = 'Translating…';
+
+        meta.appendChild(spk);
+        meta.appendChild(time);
+        meta.appendChild(lang);
+        el.appendChild(meta);
+        el.appendChild(text);
+        area.appendChild(el);
+        pruneVisibleEntries(area);
+        area.scrollTop = area.scrollHeight;
+    }
+
+    function pruneVisibleEntries(area) {
+        const entries = area.querySelectorAll('.entry');
+        if (entries.length <= MAX_VISIBLE_ENTRIES) return;
+        const removeCount = entries.length - MAX_VISIBLE_ENTRIES;
+        for (let i = 0; i < removeCount; i++) {
+            entries[i]?.remove();
+        }
+    }
+
+    function setTransText(id, text) {
+        const el = document.getElementById('tt-' + id);
+        if (el) { el.textContent = text; el.classList.remove('pending'); }
+        const area = document.getElementById('transArea');
+        area.scrollTop = area.scrollHeight;
+    }
+
+    function setUtteranceLabels(utt, srcLabel, tgtLabel, tgtCode) {
+        utt.srcLabel = srcLabel;
+        utt.tgtLabel = tgtLabel;
+        utt.tgtCode = tgtCode;
+        const convLang = document.getElementById('cl-' + utt.id);
+        const transLang = document.getElementById('tl-' + utt.id);
+        if (convLang) convLang.textContent = srcLabel;
+        if (transLang) transLang.textContent = srcLabel + ' → ' + tgtLabel;
+    }
+
+    // ── TRANSLATION ──
+    function getTransKey() {
+        const altOn = document.getElementById('useAltTranslation').checked;
+        return altOn
+            ? document.getElementById('translationKey').value.trim()
+            : document.getElementById('openaiKey').value.trim();
+    }
+    function getTransProvider() {
+        return document.getElementById('useAltTranslation').checked
+            ? document.getElementById('translationProvider').value
+            : 'openai';
+    }
+    function getTransModel() {
+        return document.getElementById('translationModel').value;
+    }
+
+    async function translateUtt(utt) {
+        const key   = getTransKey();
+        const prov  = getTransProvider();
+        const model = getTransModel();
+        if (!model) { setTransText(utt.id, '— choose a translation model —'); return; }
+        const lang1 = langLabelOf(1);
+        const lang2 = langLabelOf(2);
+        const code1 = langOf(1);
+        const code2 = langOf(2);
+        const prompt = [
+            `The conversation uses two languages: "${lang1}" and "${lang2}".`,
+            `Detect whether the text below is closer to ${lang1} or ${lang2}.`,
+            `Then translate it into the other language.`,
+            `Return strict JSON with keys "detected", "target", and "translation".`,
+            `The "detected" value must be exactly "${lang1}" or "${lang2}".`,
+            `The "target" value must be the other one.`,
+            '',
+            `Text: ${utt.text}`
+        ].join('\n');
+        const tokIn  = Math.round(prompt.length / 4);
+
+        try {
+            let result = '';
+            if (prov === 'openai')      result = await apiOpenAI(key, model, prompt);
+            else if (prov === 'anthropic') result = await apiAnthropic(key, model, prompt);
+            else                        result = await apiOpenRouter(key, model, prompt);
+            const parsed = parseTranslationResult(result, lang1, lang2);
+            const detected = parsed.detected === lang2 ? lang2 : lang1;
+            const target = detected === lang1 ? lang2 : lang1;
+            const targetCode = detected === lang1 ? code2 : code1;
+            const tokOut = Math.round((parsed.translation || result).length / 4);
+            setUtteranceLabels(utt, detected, target, targetCode);
+            utt.translation = (parsed.translation || result).trim(); utt.tokIn = tokIn; utt.tokOut = tokOut;
+            totalIn += tokIn; totalOut += tokOut;
+            setTransText(utt.id, utt.translation);
+            updateStats();
+        } catch(e) { setTransText(utt.id, '⚠ ' + e.message); }
+    }
+
+    function parseTranslationResult(raw, lang1, lang2) {
+        try {
+            const cleaned = raw.trim().replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/, '');
+            const parsed = JSON.parse(cleaned);
+            return {
+                detected: parsed.detected === lang2 ? lang2 : lang1,
+                target: parsed.target === lang1 ? lang1 : lang2,
+                translation: String(parsed.translation || '').trim()
+            };
+        } catch (_) {
+            return { detected: lang1, target: lang2, translation: raw.trim() };
+        }
+    }
+
+    async function apiOpenAI(key, model, prompt) {
+        const r = await fetch('https://api.openai.com/v1/chat/completions', {
+            method:'POST', headers:{'Content-Type':'application/json','Authorization':'Bearer '+key},
+            body: JSON.stringify({ model, max_tokens:512, temperature:0.1, messages:[{role:'user',content:prompt}] })
+        });
+        if (!r.ok) { const e=await r.json().catch(()=>{}); throw new Error(e?.error?.message||'HTTP '+r.status); }
+        return (await r.json()).choices?.[0]?.message?.content || '';
+    }
+
+    async function apiAnthropic(key, model, prompt) {
+        const r = await fetch('https://api.anthropic.com/v1/messages', {
+            method:'POST', headers:{'Content-Type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+            body: JSON.stringify({ model, max_tokens:512, messages:[{role:'user',content:prompt}] })
+        });
+        if (!r.ok) { const e=await r.json().catch(()=>{}); throw new Error(e?.error?.message||'HTTP '+r.status); }
+        return (await r.json()).content?.[0]?.text || '';
+    }
+
+    async function apiOpenRouter(key, model, prompt) {
+        const r = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+            method:'POST', headers:{'Content-Type':'application/json','Authorization':'Bearer '+key,'HTTP-Referer':'live-translate','X-Title':'Live Translate'},
+            body: JSON.stringify({ model, max_tokens:512, temperature:0.1, messages:[{role:'user',content:prompt}] })
+        });
+        if (!r.ok) { const e=await r.json().catch(()=>{}); throw new Error(e?.error?.message||'HTTP '+r.status); }
+        return (await r.json()).choices?.[0]?.message?.content || '';
+    }
+
+    // ── UI HELPERS ──
+    function setInterim(text, active) {
+        const box = document.getElementById('interimBox');
+        box.textContent = text || (active ? 'Listening…' : 'Press Start to begin.');
+        box.dataset.v = 1;
+        box.classList.toggle('live', active && !!text);
+    }
+
+    function tickTimer() {
+        if (!sessionStart) return;
+        sessionElapsedSec = Math.floor((Date.now() - sessionStart) / 1000);
+        const formatted = formatDuration(sessionElapsedSec);
+        document.getElementById('timerEl').textContent = formatted;
+        document.getElementById('statDuration').textContent = formatted;
+    }
+
+    function formatDuration(totalSeconds) {
+        const s = Math.max(0, totalSeconds || 0);
+        return Math.floor(s/60) + ':' + String(s%60).padStart(2,'0');
+    }
+
+    function updateStats() {
+        document.getElementById('statUtt').textContent = utterances.length;
+        document.getElementById('statIn').textContent  = totalIn.toLocaleString();
+        document.getElementById('statOut').textContent = totalOut.toLocaleString();
+        document.getElementById('statMode').textContent = getCaptureMode() === 'mic-only' ? 'Mic only' : 'Mic + tab';
+        document.getElementById('statRemote').textContent = getCaptureMode() === 'mic-only'
+            ? (shouldUseOpenAIMicMode()
+                ? (usesDiarizationModel() ? 'Best-effort 2-speaker room mic' : 'Shared room mic transcription')
+                : 'Voice 2 disabled')
+            : (screenStream ? 'Tab audio live' : 'Waiting for tab audio');
+        document.getElementById('statState').textContent =
+            sessionState === 'active' ? 'Recording' : (sessionState === 'idle' ? 'Idle' : sessionState);
+        document.getElementById('statDuration').textContent = formatDuration(sessionElapsedSec);
+    }
+
+    function showAlert(msg, type) {
+        const el = document.getElementById('alertBox');
+        el.textContent = msg;
+        el.className = 'alert ' + type;
+    }
+    function clearAlert() {
+        const el = document.getElementById('alertBox');
+        el.textContent = '';
+        el.className = 'alert';
+        lastAlertKey = '';
+        lastAlertAt = 0;
+    }
+    function fmtT(d) { return d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'}); }
+    function esc(t) { return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+    // ── EXPORT ──
+    function exportCSV() {
+        if (!utterances.length) return;
+        const hdr = ['Timestamp','Speaker','Source Language','Original Text','Target Language','Translation','Input Tokens','Output Tokens'];
+        const rows = utterances.map(u => [
+            u.ts.toISOString(),'Voice '+u.speaker,u.srcLabel,u.text,u.tgtLabel,u.translation||'',u.tokIn,u.tokOut
+        ].map(v=>`"${String(v).replace(/"/g,'""')}"`).join(','));
+        const blob = new Blob([[hdr.join(','),...rows].join('\n')],{type:'text/csv'});
+        const a = Object.assign(document.createElement('a'),{href:URL.createObjectURL(blob),download:'live-translate-'+new Date().toISOString().slice(0,10)+'.csv'});
+        a.click(); URL.revokeObjectURL(a.href);
+    }
+
+    init();
+</script>
+</body>
+</html>
