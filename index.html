@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Live Translate - Standalone</title>
+  <style>
+    :root{
+      --bg:#f5f2ea; --panel:#fffdf9; --ink:#17120d; --muted:#756a5f; --line:#e7ddd0;
+      --accent:#ff6b2c; --accent2:#2563eb; --ok:#1f7a45; --err:#b12b2b;
+      --shadow:0 10px 30px rgba(36,27,18,.06); --radius:16px;
+    }
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{
+      font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+      background:radial-gradient(circle at top left, rgba(255,107,44,.08), transparent 28%), linear-gradient(180deg,#faf7f1 0%,var(--bg) 100%);
+      color:var(--ink); min-height:100vh; font-size:14px; padding-bottom:24px;
+    }
+    header{
+      padding:18px 24px 14px; border-bottom:1px solid rgba(84,64,47,.08);
+      background:rgba(255,252,247,.88); backdrop-filter:blur(12px);
+      position:sticky; top:0; z-index:10; display:flex; justify-content:space-between; align-items:center; gap:16px;
+    }
+    .brand{display:flex;align-items:center;gap:10px}
+    .mark{width:32px;height:32px;border-radius:10px;background:var(--accent);color:#fff;display:grid;place-items:center;font-weight:700}
+    .copy h1{font-size:1.02rem}.copy p{font-size:.8rem;color:var(--muted);margin-top:2px}
+    .layout{
+      display:grid; grid-template-columns:360px minmax(0,1fr) minmax(0,1fr);
+      grid-template-rows:auto auto minmax(0,1fr); grid-template-areas:"opts stats stats" "opts speakers speakers" "opts conv trans";
+      gap:14px; padding:14px; height:calc(100vh - 74px - 24px);
+    }
+    .panel{background:rgba(255,253,249,.96); border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--shadow); overflow:hidden; display:flex; flex-direction:column}
+    #opts{grid-area:opts; overflow:auto}
+    #stats{grid-area:stats; display:flex; align-items:center; padding:10px 14px}
+    #speakers{grid-area:speakers}
+    #conv{grid-area:conv}
+    #trans{grid-area:trans}
+    .sec{padding:18px;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:12px}
+    .lbl{display:block;font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#9d9183;margin-bottom:5px}
+    input,select,button{font:inherit}
+    input[type=text],input[type=password],select{
+      width:100%; padding:10px 12px; border:1px solid var(--line); border-radius:10px; background:#fffdfb; color:var(--ink);
+    }
+    input:focus,select:focus{outline:none;border-color:rgba(255,107,44,.65);box-shadow:0 0 0 4px rgba(255,107,44,.1)}
+    .btn{padding:9px 14px;border:none;border-radius:10px;font-weight:700;cursor:pointer;width:100%}
+    .primary{background:linear-gradient(180deg,#ff7b45,var(--accent));color:#fff}
+    .stop{background:linear-gradient(180deg,#e05050,#c93535);color:#fff}
+    .ghost{background:#fff;border:1px solid var(--line)}
+    .btn-row{display:flex;gap:8px}
+    .btn-row .btn{flex:1}
+    .source-row{display:grid;grid-template-columns:9px 42px minmax(0,1fr) minmax(0,140px);align-items:center;gap:10px}
+    .dot{width:9px;height:9px;border-radius:50%;background:#9d9183}
+    .dot.live{background:#22c55e;animation:pulse 1.4s ease-in-out infinite}
+    .dot.rec{background:#ef4444;animation:pulse 1.2s ease-in-out infinite}
+    .vol{height:4px;border-radius:999px;background:var(--line);overflow:hidden}
+    .vol > div{height:100%;width:var(--pct,0%);background:var(--accent)}
+    .overview{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;width:100%}
+    .card{border:1px solid var(--line);border-radius:10px;padding:6px 10px;background:#fff;display:flex;align-items:baseline;gap:7px}
+    .card .k{font-size:.63rem;color:#9d9183;text-transform:uppercase;white-space:nowrap}.card .v{font-size:.84rem;font-weight:700}
+    .speaker-bar{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;padding:12px}
+    .speaker-btn{border:1px solid var(--line);border-radius:14px;background:linear-gradient(180deg,#fffdf9,#fff8ef);padding:14px 16px;text-align:left;cursor:pointer}
+    .speaker-btn.active{border-color:rgba(255,107,44,.7);box-shadow:0 0 0 4px rgba(255,107,44,.12)}
+    .kicker{display:block;font-size:.62rem;letter-spacing:.1em;text-transform:uppercase;color:#9d9183;margin-bottom:4px}
+    .main{display:block;font-size:.95rem;font-weight:700;line-height:1.3}
+    .main strong{color:#dd561b}
+    .ph{padding:11px 14px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:10px}
+    .ph-title{font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#9d9183}
+    .t-area{flex:1;overflow:auto;padding:10px;display:flex;flex-direction:column;gap:7px}
+    .entry{display:flex;flex-direction:column;gap:3px;padding:8px 10px;border-radius:10px;background:#fff;border:1px solid var(--line);border-left:3px solid var(--line)}
+    .entry.src{border-left-color:var(--accent2)} .entry.dst{border-left-color:#dc2626}
+    .meta{display:flex;align-items:center;gap:6px;font-size:.67rem;color:#756a5f;flex-wrap:wrap}
+    .text{line-height:1.45}
+    .interim-wrap{padding:0 10px 10px}
+    .interim{padding:8px 12px;border-radius:10px;border:1.5px dashed var(--line);background:#faf7f2;font-size:.84rem;color:var(--muted);font-style:italic;min-height:36px}
+    .interim.live{font-style:normal}
+    .empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px;text-align:center;color:#9d9183;gap:8px}
+    .alert{font-size:.73rem;padding:8px 10px;border-radius:10px;border:1px solid transparent;display:none;line-height:1.4}
+    .alert.err{background:#fff1f1;color:var(--err);border-color:#f0c9c9;display:block}
+    .alert.ok{background:#eef9f1;color:var(--ok);border-color:#cae9d4;display:block}
+    .note{font-size:.71rem;color:var(--muted);line-height:1.45;padding:8px 10px;background:#fff6df;border:1px solid #f2d28f;border-radius:10px}
+    @keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.55;transform:scale(.82)}}
+    @media (max-width:1100px){.layout{grid-template-columns:320px minmax(0,1fr);grid-template-rows:auto auto minmax(280px,1fr) minmax(280px,1fr);grid-template-areas:"opts stats" "opts speakers" "opts conv" "opts trans"} .overview{grid-template-columns:repeat(3,minmax(0,1fr))}}
+    @media (max-width:700px){.layout{grid-template-columns:1fr;grid-template-areas:"opts" "stats" "speakers" "conv" "trans";height:auto}.overview{grid-template-columns:repeat(2,minmax(0,1fr))}.speaker-bar{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+<header>
+  <div class="brand">
+    <div class="mark">LT</div>
+    <div class="copy">
+      <h1>Live Translate</h1>
+      <p>Standalone browser-only version</p>
+    </div>
+  </div>
+  <div style="display:flex;align-items:center;gap:10px;">
+    <div id="statusDot" class="dot"></div>
+    <span style="font-size:.72rem;color:var(--muted)" id="statusText">Idle</span>
+  </div>
+</header>
+
+<div class="layout">
+  <div class="panel" id="opts">
+    <div class="sec">
+      <label class="lbl">OpenAI</label>
+      <div>
+        <label class="lbl">API Key</label>
+        <input type="password" id="apiKey" placeholder="sk-...">
+        <p style="font-size:.7rem;color:var(--muted);margin-top:4px;">Stored only in this browser via localStorage.</p>
+      </div>
+      <div>
+        <label class="lbl">Transcription Model</label>
+        <select id="transcriptionModel">
+          <option value="gpt-4o-mini-transcribe">gpt-4o-mini-transcribe</option>
+          <option value="gpt-4o-transcribe">gpt-4o-transcribe</option>
+          <option value="whisper-1">whisper-1</option>
+        </select>
+      </div>
+      <div>
+        <label class="lbl">Translation Model</label>
+        <select id="translationModel">
+          <option value="gpt-4o-mini" selected>gpt-4o-mini</option>
+          <option value="gpt-4o">gpt-4o</option>
+          <option value="o4-mini">o4-mini</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="sec">
+      <label class="lbl">Source Language</label>
+      <select id="lang1">
+        <option value="de">German</option><option value="en" selected>English</option><option value="vi">Vietnamese</option>
+        <option value="fr">French</option><option value="es">Spanish</option><option value="tr">Turkish</option>
+        <option value="ar">Arabic</option><option value="it">Italian</option><option value="ru">Russian</option>
+        <option value="zh">Chinese</option><option value="hi">Hindi</option>
+      </select>
+      <label class="lbl">Target Language</label>
+      <select id="lang2">
+        <option value="de">German</option><option value="en">English</option><option value="vi" selected>Vietnamese</option>
+        <option value="fr">French</option><option value="es">Spanish</option><option value="tr">Turkish</option>
+        <option value="ar">Arabic</option><option value="it">Italian</option><option value="ru">Russian</option>
+        <option value="zh">Chinese</option><option value="hi">Hindi</option>
+      </select>
+      <label class="lbl">Domain</label>
+      <select id="domain">
+        <option value="general">General</option><option value="business">Business</option><option value="legal">Legal</option>
+        <option value="medical">Medical</option><option value="technical">Technical</option><option value="academic">Academic</option>
+      </select>
+    </div>
+
+    <div class="sec">
+      <label class="lbl">Audio</label>
+      <label class="lbl">Capture Mode</label>
+      <select id="captureMode">
+        <option value="mic" selected>Mic only</option>
+        <option value="tab">Tab only</option>
+        <option value="mic-tab">Mic + Tab</option>
+      </select>
+      <label class="lbl">Chunk Seconds</label>
+      <input id="chunkSeconds" type="range" min="2" max="8" step="1" value="4">
+      <label class="lbl">Input Boost</label>
+      <input id="inputGain" type="range" min="0.5" max="4" step="0.1" value="1">
+      <div class="source-row">
+        <div class="dot live"></div><span class="lbl" style="margin:0">Mic</span><span id="micDetail" style="font-size:.73rem;color:var(--muted)">Default</span>
+        <select id="micSelect"></select>
+      </div>
+      <div class="source-row">
+        <div class="dot" id="screenDot"></div><span class="lbl" style="margin:0">Tab</span><span id="screenDetail" style="font-size:.73rem;color:var(--muted)">Not sharing</span>
+        <button class="btn ghost" id="screenBtn">Share</button>
+      </div>
+      <div class="vol"><div id="volumeBar"></div></div>
+    </div>
+
+    <div class="sec">
+      <div id="alertBox" class="alert"></div>
+      <div class="btn-row">
+        <button class="btn primary" id="startBtn">Start</button>
+        <button class="btn stop" id="stopBtn" disabled>Stop</button>
+      </div>
+      <button class="btn ghost" id="exportBtn">Export CSV</button>
+      <p class="note">Press Space or Enter to toggle recording. Use a secure origin for microphone access.</p>
+    </div>
+  </div>
+
+  <div class="panel" id="stats">
+    <div class="overview">
+      <div class="card"><span class="k">State</span><span class="v" id="statState">Idle</span></div>
+      <div class="card"><span class="k">Timer</span><span class="v" id="statDuration">0:00</span></div>
+      <div class="card"><span class="k">Utterances</span><span class="v" id="statUtt">0</span></div>
+      <div class="card"><span class="k">Mode</span><span class="v" id="statMode">-</span></div>
+      <div class="card"><span class="k">Chunk</span><span class="v" id="statChunk">4s</span></div>
+    </div>
+  </div>
+
+  <div class="panel" id="speakers">
+    <div class="speaker-bar">
+      <button class="speaker-btn active" id="speakerLang1Btn" type="button">
+        <span class="kicker">Active Speaker</span>
+        <span class="main">I am speaking <strong id="speakerLang1Label">English</strong></span>
+      </button>
+      <button class="speaker-btn" id="speakerLang2Btn" type="button">
+        <span class="kicker">Active Speaker</span>
+        <span class="main">I am speaking <strong id="speakerLang2Label">Vietnamese</strong></span>
+      </button>
+    </div>
+  </div>
+
+  <div class="panel" id="conv">
+    <div class="ph"><span class="ph-title">Language 1</span><div><span id="timerEl">0:00</span></div></div>
+    <div class="t-area" id="convList"><div class="empty">Transcripts will appear here.</div></div>
+    <div class="interim-wrap"><div class="interim" id="interimBox">Waiting for speech...</div></div>
+  </div>
+
+  <div class="panel" id="trans">
+    <div class="ph"><span class="ph-title">Language 2</span></div>
+    <div class="t-area" id="transList"><div class="empty">Translations will appear here.</div></div>
+    <div class="interim-wrap"><div class="interim" id="interimTransBox">...</div></div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const STORE_KEY = 'lt_standalone_v1';
+  const state = {
+    apiKey: '',
+    recorder: null,
+    micStream: null,
+    tabStream: null,
+    audioCtx: null,
+    sourceNode: null,
+    gainNode: null,
+    processor: null,
+    chunks: [],
+    pendingText: '',
+    sessionStart: 0,
+    recording: false,
+    activeSpeaker: 'lang1',
+    utterances: [],
+    currentTranscript: null,
+    currentTranslation: null,
+    interval: null,
+  };
+
+  const save = () => localStorage.setItem(STORE_KEY, JSON.stringify({
+    apiKey: $('apiKey').value,
+    lang1: $('lang1').value, lang2: $('lang2').value, domain: $('domain').value,
+    captureMode: $('captureMode').value, chunkSeconds: $('chunkSeconds').value,
+    inputGain: $('inputGain').value, transcriptionModel: $('transcriptionModel').value,
+    translationModel: $('translationModel').value, activeSpeaker: state.activeSpeaker,
+    micSelect: $('micSelect').value || '',
+  }));
+  const load = () => {
+    try{
+      const s = JSON.parse(localStorage.getItem(STORE_KEY) || '{}');
+      if (s.apiKey) $('apiKey').value = s.apiKey;
+      ['lang1','lang2','domain','captureMode','chunkSeconds','inputGain','transcriptionModel','translationModel','micSelect'].forEach(id => { if (s[id] !== undefined && $(id)) $(id).value = s[id]; });
+      if (s.activeSpeaker === 'lang2') state.activeSpeaker = 'lang2';
+    }catch(_){}
+  };
+
+  const setAlert = (msg, type='err') => { const el = $('alertBox'); el.textContent = msg || ''; el.className = msg ? `alert ${type}` : 'alert'; };
+  const setRecordingUI = (on) => {
+    $('statusText').textContent = on ? 'Recording' : 'Idle';
+    $('statusDot').className = on ? 'dot rec' : 'dot';
+    $('statState').textContent = on ? 'Recording' : 'Idle';
+    $('startBtn').disabled = on; $('stopBtn').disabled = !on;
+  };
+  const setActiveSpeaker = (id) => {
+    state.activeSpeaker = id === 'lang2' ? 'lang2' : 'lang1';
+    $('speakerLang1Btn').classList.toggle('active', state.activeSpeaker === 'lang1');
+    $('speakerLang2Btn').classList.toggle('active', state.activeSpeaker === 'lang2');
+    save();
+  };
+  const labelFor = (panel) => panel === 'lang1' ? $('lang1').selectedOptions[0]?.textContent || 'Language 1' : $('lang2').selectedOptions[0]?.textContent || 'Language 2';
+  const langFor = (panel) => panel === 'lang1' ? $('lang1').value : $('lang2').value;
+  const fmtTime = (d) => d.toLocaleTimeString([], { hour:'2-digit', minute:'2-digit', second:'2-digit' });
+  const csv = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+  const addEntry = (listId, cls, text, meta = {}) => {
+    const list = $(listId);
+    list.querySelector('.empty')?.remove();
+    const el = document.createElement('div');
+    el.className = `entry ${cls}`;
+    el.innerHTML = `<div class="meta"><span>${csv(meta.speaker || '')}</span><span>${fmtTime(meta.ts || new Date())}</span><span>${csv(meta.langLabel || '')}</span></div><div class="text"></div>`;
+    el.querySelector('.text').textContent = text;
+    list.appendChild(el);
+    list.scrollTop = list.scrollHeight;
+  };
+  const exportCsv = () => {
+    if (!state.utterances.length) return;
+    const lines = ['Timestamp,Speaker,Source Language,Target Language,Original,Translation'];
+    for (const u of state.utterances) {
+      lines.push([u.timestamp?.toISOString(), u.speaker, u.sourceLangLabel, u.targetLangLabel, u.text, u.translation || ''].map(csv).join(','));
+    }
+    const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
+    const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: `live-translate-${new Date().toISOString().slice(0,10)}.csv` });
+    a.click(); URL.revokeObjectURL(a.href);
+  };
+
+  async function openAudio(ctx) {
+    const mode = $('captureMode').value;
+    const constraints = { audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 }, video: false };
+    if (mode === 'mic-tab') {
+      const mic = await navigator.mediaDevices.getUserMedia(constraints);
+      const tab = await navigator.mediaDevices.getDisplayMedia({ audio: true, video: true, systemAudio: 'include' });
+      tab.getVideoTracks().forEach(t => t.stop());
+      const audioTracks = tab.getAudioTracks();
+      if (!audioTracks.length) throw new Error('No tab audio track shared.');
+      state.micStream = mic;
+      state.tabStream = tab;
+      $('screenDot').className = 'dot live';
+      $('screenDetail').textContent = audioTracks[0].label || 'Tab audio';
+      audioTracks[0].onended = () => stopTab();
+      const micSource = ctx.createMediaStreamSource(mic);
+      const tabSource = ctx.createMediaStreamSource(tab);
+      const gain = ctx.createGain();
+      gain.gain.value = parseFloat($('inputGain').value || '1');
+      const dest = ctx.createMediaStreamDestination();
+      micSource.connect(gain);
+      tabSource.connect(gain);
+      gain.connect(dest);
+      return { stream: dest.stream, gainNode: gain, sourceNode: null };
+    }
+    if (mode === 'tab') {
+      const s = await navigator.mediaDevices.getDisplayMedia({ audio: true, video: true, systemAudio: 'include' });
+      s.getVideoTracks().forEach(t => t.stop());
+      const audioTracks = s.getAudioTracks();
+      if (!audioTracks.length) throw new Error('No tab audio track shared.');
+      state.tabStream = s;
+      $('screenDot').className = 'dot live';
+      $('screenDetail').textContent = audioTracks[0].label || 'Tab audio';
+      audioTracks[0].onended = () => stopTab();
+      return { stream: s, gainNode: null, sourceNode: null };
+    }
+    const mic = await navigator.mediaDevices.getUserMedia(constraints);
+    state.micStream = mic;
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const mics = devices.filter(d => d.kind === 'audioinput');
+    const sel = $('micSelect');
+    if (sel && !sel.options.length) {
+      for (const d of mics) {
+        const opt = document.createElement('option');
+        opt.value = d.deviceId; opt.textContent = d.label || 'Microphone';
+        sel.appendChild(opt);
+      }
+    }
+    return { stream: mic, gainNode: null, sourceNode: null };
+  }
+
+  function stopTab() {
+    state.tabStream?.getTracks().forEach(t => t.stop());
+    state.tabStream = null;
+    $('screenDot').className = 'dot';
+    $('screenDetail').textContent = 'Not sharing';
+  }
+
+  async function transcribe(blob) {
+    const fd = new FormData();
+    fd.append('file', blob, 'chunk.webm');
+    fd.append('model', $('transcriptionModel').value);
+    fd.append('response_format', 'verbose_json');
+    const r = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${$('apiKey').value.trim()}` },
+      body: fd,
+    });
+    if (!r.ok) throw new Error(`Transcription ${r.status}`);
+    const j = await r.json();
+    return (j.text || '').trim();
+  }
+
+  async function translate(text) {
+    const sourceLang = langFor('lang1');
+    const targetLang = langFor('lang2');
+    if (!text.trim() || sourceLang === targetLang) return text;
+    const domains = {
+      general: 'everyday conversational speech', business: 'professional business communication',
+      legal: 'legal and contractual language', medical: 'medical and clinical terminology',
+      technical: 'technical, engineering, or software topics', academic: 'academic or scientific discourse',
+    };
+    const prompt = [
+      `You are a careful real-time interpreter specializing in ${domains[$('domain').value] || domains.general} between ${labelFor('lang1')} and ${labelFor('lang2')}.`,
+      `Translate faithfully from ${labelFor('lang1')} to ${labelFor('lang2')}.`,
+      'Preserve names, numbers, dates, product names, abbreviations, and quoted text exactly unless a standard localized form is clearly better.',
+      'Prefer natural, idiomatic output over literal word-for-word phrasing, but never add missing meaning or remove meaning.',
+      'Reply with ONLY the translated text.'
+    ].join(' ');
+    const r = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${$('apiKey').value.trim()}` },
+      body: JSON.stringify({
+        model: $('translationModel').value,
+        messages: [{ role: 'system', content: prompt }, { role: 'user', content: text }],
+        max_tokens: 400,
+        temperature: 0,
+      }),
+    });
+    if (!r.ok) throw new Error(`Translation ${r.status}`);
+    const j = await r.json();
+    return (j.choices?.[0]?.message?.content || '').trim();
+  }
+
+  async function start() {
+    if (state.recording) return;
+    const apiKey = $('apiKey').value.trim();
+    if (!apiKey) { setAlert('Enter an OpenAI API key first.'); return; }
+    if (!navigator.mediaDevices?.getUserMedia) { setAlert('This browser cannot access microphone input.'); return; }
+
+    try{
+      setAlert('');
+      save();
+      const ctx = new AudioContext();
+      const opened = await openAudio(ctx);
+      state.audioCtx = ctx;
+      const source = opened.stream ? ctx.createMediaStreamSource(opened.stream) : null;
+      const gain = opened.gainNode || ctx.createGain();
+      if (!opened.gainNode) {
+        gain.gain.value = parseFloat($('inputGain').value || '1');
+        if (source) source.connect(gain);
+      }
+      const output = ctx.createMediaStreamDestination();
+      gain.connect(output);
+      state.sourceNode = source;
+      state.gainNode = gain;
+      const ms = Math.max(2000, parseInt($('chunkSeconds').value, 10) * 1000 || 4000);
+      state.chunks = [];
+      const recorderStream = output.stream || opened.stream;
+      state.recorder = new MediaRecorder(recorderStream, { mimeType: MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : 'audio/webm' });
+      state.recorder.ondataavailable = (e) => { if (e.data.size) state.chunks.push(e.data); };
+      state.recorder.onstop = async () => {
+        const recorderRef = state.recorder;
+        const parts = state.chunks.splice(0);
+        if (!state.recording && !parts.length) return;
+        const blob = new Blob(parts, { type: recorderRef?.mimeType || 'audio/webm' });
+        try{
+          const sourceSpeaker = state.activeSpeaker;
+          const sourcePanel = sourceSpeaker === 'lang2' ? 'lang2' : 'lang1';
+          const targetPanel = sourcePanel === 'lang1' ? 'lang2' : 'lang1';
+          const sourceText = await transcribe(blob);
+          if (!sourceText) return;
+          addEntry(sourcePanel === 'lang1' ? 'convList' : 'transList', sourcePanel === 'lang1' ? 'src' : 'src', sourceText, { speaker: sourcePanel, langLabel: labelFor(sourcePanel) });
+          $('interimBox').textContent = sourceText;
+          const translation = await translate(sourceText);
+          $('interimTransBox').textContent = translation || '...';
+          addEntry(targetPanel === 'lang1' ? 'convList' : 'transList', 'dst', translation, { speaker: sourcePanel, langLabel: labelFor(targetPanel) });
+          state.utterances.push({
+            timestamp: new Date(),
+            speaker: sourcePanel === 'lang1' ? 'Language 1' : 'Language 2',
+            sourceLangLabel: labelFor(sourcePanel),
+            targetLangLabel: labelFor(targetPanel),
+            text: sourceText,
+            translation,
+          });
+          $('statUtt').textContent = String(state.utterances.length);
+        } catch (err) {
+          setAlert(err.message || 'Transcription failed');
+        }
+      };
+
+      state.sessionStart = Date.now();
+      state.recording = true;
+      setRecordingUI(true);
+      $('statMode').textContent = $('captureMode').value === 'mic-tab' ? 'Mic + Tab' : $('captureMode').value === 'tab' ? 'Tab only' : 'Mic only';
+      $('statChunk').textContent = `${parseInt($('chunkSeconds').value, 10)}s`;
+      state.interval = setInterval(() => { if (state.recorder?.state === 'recording') { state.recorder.stop(); state.recorder.start(); } }, ms);
+      state.recorder.start();
+      $('statDuration').textContent = '0:00';
+      $('timerEl').textContent = '0:00';
+      clearInterval(state.timer);
+      state.timer = setInterval(() => {
+        const sec = Math.floor((Date.now() - state.sessionStart) / 1000);
+        const fmt = `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
+        $('timerEl').textContent = fmt;
+        $('statDuration').textContent = fmt;
+      }, 1000);
+    } catch (err) {
+      setRecordingUI(false);
+      setAlert(err.message || 'Could not start');
+      stop();
+    }
+  }
+
+  function stop() {
+    state.recording = false;
+    clearInterval(state.interval); state.interval = null;
+    clearInterval(state.timer); state.timer = null;
+    if (state.recorder && state.recorder.state !== 'inactive') {
+      try { state.recorder.stop(); } catch (_) {}
+    }
+    state.recorder = null;
+    state.audioCtx?.close().catch(()=>{});
+    state.audioCtx = null;
+    state.sourceNode = null;
+    state.gainNode = null;
+    state.micStream?.getTracks().forEach(t => t.stop());
+    state.micStream = null;
+    stopTab();
+    setRecordingUI(false);
+  }
+
+  function bumpVolume() {
+    let raf;
+    const tick = () => {
+      const rms = state.recorder?.state === 'recording' ? 0.2 : 0;
+      $('volumeBar').style.setProperty('--pct', `${Math.min(100, Math.round(rms * 300))}%`);
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }
+
+  load();
+  setActiveSpeaker(state.activeSpeaker);
+  $('apiKey').addEventListener('change', save);
+  ['lang1','lang2','domain','captureMode','chunkSeconds','inputGain','transcriptionModel','translationModel','micSelect'].forEach(id => $(id)?.addEventListener('change', () => { save(); $('statChunk').textContent = `${$('chunkSeconds').value}s`; }));
+  $('speakerLang1Btn').addEventListener('click', () => setActiveSpeaker('lang1'));
+  $('speakerLang2Btn').addEventListener('click', () => setActiveSpeaker('lang2'));
+  $('startBtn').addEventListener('click', start);
+  $('stopBtn').addEventListener('click', stop);
+  $('screenBtn').addEventListener('click', async () => {
+    try {
+      if (state.tabStream) return stopTab();
+      const s = await navigator.mediaDevices.getDisplayMedia({ audio: true, video: true, systemAudio: 'include' });
+      s.getVideoTracks().forEach(t => t.stop());
+      state.tabStream = s;
+      $('screenDot').className = 'dot live';
+      $('screenDetail').textContent = s.getAudioTracks()[0]?.label || 'Tab audio';
+      s.getAudioTracks()[0].onended = stopTab;
+    } catch (err) {
+      if (err.name !== 'NotAllowedError') setAlert(`Screen capture failed: ${err.message}`);
+    }
+  });
+  $('exportBtn').addEventListener('click', exportCsv);
+  document.addEventListener('keydown', (e) => {
+    const tag = document.activeElement?.tagName;
+    if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+    if (e.code === 'Space' || e.code === 'Enter') { e.preventDefault(); state.recording ? stop() : start(); }
+  });
+  navigator.mediaDevices?.addEventListener?.('devicechange', async () => {
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const mics = devices.filter(d => d.kind === 'audioinput');
+      const sel = $('micSelect');
+      const current = sel.value;
+      sel.replaceChildren();
+      for (const d of mics) {
+        const opt = document.createElement('option');
+        opt.value = d.deviceId; opt.textContent = d.label || 'Microphone';
+        sel.appendChild(opt);
+      }
+      if (current) sel.value = current;
+    } catch(_) {}
+  });
+  bumpVolume();
+})();
+</script>
+</body>
+</html>
